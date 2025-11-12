@@ -43,3 +43,34 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Documentation files (except README.md)
+*.md
+!README.md
+
+# Specific files to ignore
+fleet 2.png
+fleet*.png
+
+# Environment and configuration files
+.env
+.env.local
+.env.*.local
+*.log
+flutter_*.log
+
+# IDE and editor files
+.vscode/
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*~
