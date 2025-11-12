@@ -1,0 +1,119 @@
+{
+  "project_info": {
+    "project_number": "523486500169",
+    "firebase_url": "https://concept-illustrated-mvp-default-rtdb.europe-west1.firebasedatabase.app",
+    "project_id": "concept-illustrated-mvp",
+    "storage_bucket": "concept-illustrated-mvp.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:523486500169:android:cd65a77e190b8d9be23698",
+        "android_client_info": {
+          "package_name": "com.example.cis_driver_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "523486500169-epmlh3gabqqsfl8fqsva3g44n4a22dug.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAqPObVvWr4EL6WwZHmar-ZLQDCmnC0kOM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "523486500169-epmlh3gabqqsfl8fqsva3g44n4a22dug.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "523486500169-q5tnbj71ev0gik60obj58o10lo6tqfaf.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.conceptIllustratedDriver"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:523486500169:android:3c027b5b7d815dece23698",
+        "android_client_info": {
+          "package_name": "com.example.concept_illustrated_driver"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "523486500169-epmlh3gabqqsfl8fqsva3g44n4a22dug.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAqPObVvWr4EL6WwZHmar-ZLQDCmnC0kOM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "523486500169-epmlh3gabqqsfl8fqsva3g44n4a22dug.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "523486500169-q5tnbj71ev0gik60obj58o10lo6tqfaf.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.conceptIllustratedDriver"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:523486500169:android:78bc7b622f834858e23698",
+        "android_client_info": {
+          "package_name": "com.example.myapp"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "523486500169-epmlh3gabqqsfl8fqsva3g44n4a22dug.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAqPObVvWr4EL6WwZHmar-ZLQDCmnC0kOM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "523486500169-epmlh3gabqqsfl8fqsva3g44n4a22dug.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "523486500169-q5tnbj71ev0gik60obj58o10lo6tqfaf.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.conceptIllustratedDriver"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

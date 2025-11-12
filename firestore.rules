@@ -1,0 +1,365 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function getUserRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+    
+    function isAdmin() {
+      return getUserRole() == 'admin' || 
+             request.auth.email == "kapolw@gmail.com" ||
+             request.auth.email == "admin@conceptillustrated.com";
+    }
+    
+    function isDriver() {
+      return getUserRole() == 'driver';
+    }
+    
+    function isPharmacy() {
+      return getUserRole() == 'pharmacy';
+    }
+    
+    function isApproved() {
+      return request.auth.token.isApproved == true;
+    }
+    
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+    
+    function isApprovedAndActive() {
+      let userData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return userData.isApproved == true && userData.isActive == true;
+    }
+    
+    // Users collection - role-based access with branch support
+    match /users/{userId} {
+      // Admins can read all user profiles (for user management dashboard)
+      allow read: if isAdmin();
+      
+      // Users can read their own profile
+      allow read: if isAuthenticated() && isOwner(userId);
+      
+      // Parent pharmacies can read their branches
+      allow read: if isAuthenticated() && isApproved() && isPharmacy() &&
+        exists(/databases/$(database)/documents/users/$(userId)) &&
+        get(/databases/$(database)/documents/users/$(userId)).data.parentPharmacyId == request.auth.uid;
+      
+      // Branches can read their parent pharmacy
+      allow read: if isAuthenticated() && isApproved() && isPharmacy() &&
+        exists(/databases/$(database)/documents/users/$(userId)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.parentPharmacyId == userId;
+      
+      // Branches in the same organization can read each other
+      allow read: if isAuthenticated() && isApproved() && isPharmacy() &&
+        exists(/databases/$(database)/documents/users/$(userId)) &&
+        get(/databases/$(database)/documents/users/$(userId)).data.organizationId == 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId;
+      
+      // Drivers can read pharmacy profiles, pharmacies can read driver profiles
+      allow read: if isAuthenticated() && isApproved() && exists(/databases/$(database)/documents/users/$(userId)) && (
+        (isDriver() && get(/databases/$(database)/documents/users/$(userId)).data.role == 'pharmacy') ||
+        (isPharmacy() && get(/databases/$(database)/documents/users/$(userId)).data.role == 'driver')
+      );
+      
+      // Allow authenticated approved users to read user profiles for messaging
+      allow read: if isAuthenticated() && isApproved();
+      
+      // Users can update their own profile (except role, approval status, and branch hierarchy fields)
+      allow update: if isAuthenticated() && isOwner(userId) && 
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'role', 'isApproved', 'isParent', 'parentPharmacyId', 'organizationId'
+        ]);
+      
+      // Parent pharmacies can update their branches (limited fields)
+      allow update: if isAuthenticated() && isApproved() && isPharmacy() &&
+        resource.data.parentPharmacyId == request.auth.uid &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'role', 'parentPharmacyId', 'organizationId', 'isParent'
+        ]);
+      
+      // Admins can update any user (including role and approval status)
+      allow update: if isAdmin();
+      
+      // Users can create their own profile during signup
+      allow create: if isAuthenticated() && isOwner(userId);
+      
+      // Admins can create branches without auth (for branches without separate login)
+      allow create: if isAdmin();
+      
+      // Only admins can delete users
+      allow delete: if isAdmin();
+    }
+    
+    // Deliveries collection - complex role-based access
+    match /deliveries/{deliveryId} {
+      // Allow read if:
+      // - User is admin
+      // - User is the assigned driver
+      // - Delivery is pending (available for drivers to see)
+      // - User is the assigned driver
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        resource.data.driverId == request.auth.uid ||
+        resource.data.status == 'pending' ||
+        (!exists(resource.data.driverId) && resource.data.status == 'pending')
+      );
+      
+      // Allow create only by admins or pharmacy users
+      allow create: if isAuthenticated() && (isAdmin() || getUserRole() == 'pharmacy');
+      
+      // Pharmacies can read deliveries they created
+      // Drivers can read deliveries assigned to them OR unassigned deliveries
+      allow read: if isAuthenticated() && isApproved() && (
+        (isPharmacy() && resource.data.pharmacyId == request.auth.uid) ||
+        (isDriver() && (
+          resource.data.driverId == request.auth.uid ||
+          resource.data.driverId == null ||
+          !('driverId' in resource.data)
+        ))
+      );
+      
+      // Admins can create deliveries (for any pharmacy)
+      allow create: if isAdmin();
+      
+      // Pharmacies can create new deliveries (only their own)
+      allow create: if isAuthenticated() && isApproved() && isPharmacy() &&
+        request.resource.data.pharmacyId == request.auth.uid;
+      
+      // Admins can update all deliveries
+      allow update: if isAdmin();
+      
+      // Pharmacies can update their own deliveries (limited fields)
+      allow update: if isAuthenticated() && isApproved() && isPharmacy() &&
+        resource.data.pharmacyId == request.auth.uid &&
+        // Can only update specific fields
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['deliveryInstructions', 'recipientName', 'recipientPhone', 'packages', 'deliveryAddress', 'deliveryCity', 'deliveryPostcode', 'deliveryLocation', 'priority', 'cost', 'requestedDeliveryTime']);
+      
+      // Drivers can update delivery status and tracking info
+      // Case 1: Driver is picking up a pending/unassigned delivery (setting driverId and status to assigned)
+      // Allow if driverId is missing/null and driver is setting their own ID
+      allow update: if isAuthenticated() && isApproved() && isDriver() &&
+        (resource.data.driverId == null || resource.data.driverId == '') &&
+        request.resource.data.driverId == request.auth.uid &&
+        // Can update driverId, status, and updatedAt when picking up
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['driverId', 'status', 'updatedAt']);
+      
+      // Case 2: Delivery is already assigned to this driver (can update status, add photos, signatures)
+      allow update: if isAuthenticated() && isApproved() && isDriver() &&
+        resource.data.driverId == request.auth.uid &&
+        // Can only update delivery status and tracking fields
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'driverId', 'actualPickupTime', 'actualDeliveryTime', 'photos', 'signature', 'actualDistance', 'actualDuration', 'updatedAt']);
+      
+      // Admins can delete all deliveries
+      allow delete: if isAdmin();
+      
+      // Pharmacies can delete their own deliveries
+      allow delete: if isAuthenticated() && isApproved() && isPharmacy() &&
+        resource.data.pharmacyId == request.auth.uid;
+    }
+    
+    // Delivery tracking collection - real-time location updates
+    match /delivery_tracking/{trackingId} {
+      // Admins can read all tracking data (no approval required)
+      allow read: if isAdmin();
+      
+      // Pharmacies can read tracking for their deliveries
+      // Drivers can read their own tracking data
+      allow read: if isAuthenticated() && isApproved() && (
+        (isPharmacy() && trackingId.split('_')[0] in get(/databases/$(database)/documents/deliveries/$(trackingId.split('_')[0])).data.pharmacyId) ||
+        (isDriver() && resource.data.driverId == request.auth.uid)
+      );
+      
+      // Only drivers can update their location
+      allow write: if isAuthenticated() && isApproved() && isDriver() &&
+        request.resource.data.driverId == request.auth.uid;
+    }
+    
+    // Messages collection - for admin dashboard messaging system
+    match /messages/{messageId} {
+      // Admins can read all messages (no approval required)
+      allow read: if isAdmin();
+      
+      // Users can read messages they sent or received
+      allow read: if isAuthenticated() && (
+        resource.data.recipientId == request.auth.uid || 
+        resource.data.senderId == request.auth.uid
+      );
+      
+      // Authenticated approved users can create messages
+      allow create: if isAuthenticated() && isApproved();
+      
+      // Admins can update and delete all messages
+      allow update, delete: if isAdmin();
+      
+      // Users can update messages they sent or received (e.g., mark as read)
+      allow update: if isAuthenticated() && isApproved() && (
+        resource.data.senderId == request.auth.uid ||
+        resource.data.recipientId == request.auth.uid
+      );
+      
+      // Users can delete their own sent messages
+      allow delete: if isAuthenticated() && resource.data.senderId == request.auth.uid;
+      
+      // Users can delete messages they received
+      allow delete: if isAuthenticated() && isApproved() && resource.data.recipientId == request.auth.uid;
+    }
+    
+    // User notifications collection
+    match /notifications/{userId}/messages/{notificationId} {
+      // Admins can read all notifications
+      allow read: if isAdmin();
+      // Users can only read their own notifications
+      allow read: if isAuthenticated() && isOwner(userId);
+      
+      // Only system/admin can create notifications
+      allow create: if isAuthenticated() && (isAdmin() || request.auth.uid == userId);
+      
+      // Users can update their own notifications (mark as read)
+      allow update: if isAuthenticated() && isOwner(userId);
+      
+      // Users can delete their own notifications
+      allow delete: if isAuthenticated() && isOwner(userId);
+      // Users can only access their own notifications
+      allow write: if isAuthenticated() && isOwner(userId);
+    }
+    
+    // User locations collection - for map display filtering
+    match /user_locations/{userId} {
+      // Admins can read all locations (no approval required)
+      allow read: if isAdmin();
+      
+      // Users can read their own location
+      // Drivers can read pharmacy locations
+      // Pharmacies can read driver locations assigned to their deliveries
+      allow read: if isAuthenticated() && isApproved() && (
+        isOwner(userId) ||
+        (isDriver() && get(/databases/$(database)/documents/users/$(userId)).data.role == 'pharmacy') ||
+        (isPharmacy() && get(/databases/$(database)/documents/users/$(userId)).data.role == 'driver')
+      );
+      
+      // Users can update their own location
+      allow write: if isAuthenticated() && isApproved() && isOwner(userId);
+    }
+    
+    // Analytics and stats - admin only
+    match /analytics/{document=**} {
+      allow read, write: if isAdmin();
+    }
+    
+    // System settings and configuration - admin only
+    match /settings/{document=**} {
+      allow read: if isAuthenticated() && isApproved();
+      allow write: if isAdmin();
+    }
+    
+    // Audit logs - tracks all data update operations
+    match /audit_logs/{logId} {
+      // Admins can read all audit logs
+      allow read: if isAdmin();
+      
+      // Authenticated and approved users can create audit logs when they perform actions
+      // This ensures all data updates are logged
+      allow create: if isAuthenticated() && isApproved() &&
+        // Ensure the log is being created by the authenticated user
+        request.resource.data.userId == request.auth.uid &&
+        // Ensure required fields are present (timestamp/createdAt use serverTimestamp, so not checked here)
+        request.resource.data.keys().hasAll(['action', 'collection', 'message', 'userId', 'userEmail', 'userName', 'type', 'level']);
+      
+      // Audit logs are immutable - no updates or deletes allowed
+      allow update, delete: if false;
+    }
+    
+    // Chat/messaging between drivers and pharmacies
+    match /conversations/{conversationId} {
+      // Admins can read all conversations
+      allow read: if isAdmin();
+      
+      // Participants can read conversations they're part of
+      allow read, write: if isAuthenticated() && isApproved() &&
+        request.auth.uid in resource.data.participants;
+    }
+    
+    match /conversations/{conversationId}/messages/{messageId} {
+      // Admins can read all conversation messages
+      allow read: if isAdmin();
+      
+      // Participants can read messages in conversations they're part of
+      allow read: if isAuthenticated() && isApproved() && (
+        request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants
+      );
+      
+      // Participants can create messages in conversations they're part of
+      allow create: if isAuthenticated() && isApproved() && (
+        request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants
+      );
+      
+      // Admins can update/delete any message
+      allow update, delete: if isAdmin();
+      
+      // Message sender can update/delete their own messages
+      allow update, delete: if isAuthenticated() && isApproved() && 
+        resource.data.senderId == request.auth.uid;
+    }
+    
+    // Contact messages collection - for public contact form submissions
+    match /contact_messages/{messageId} {
+      // Public can create messages (via API endpoint)
+      allow create: if true;
+      
+      // Only admins can read contact messages
+      allow read: if isAdmin();
+      
+      // Only admins can update (mark as read, change status)
+      allow update: if isAdmin();
+      
+      // Only admins can delete
+      allow delete: if isAdmin();
+    }
+    
+    // Newsletter subscriptions collection - for public newsletter signups
+    match /newsletter_subscriptions/{subscriptionId} {
+      // Public can create subscriptions (via API endpoint)
+      // Using email as document ID prevents duplicates automatically
+      allow create: if true;
+      
+      // Public can update their own subscription (for resubscribing)
+      allow update: if true;
+      
+      // Only admins can read subscriptions
+      allow read: if isAdmin();
+      
+      // Only admins can delete subscriptions
+      allow delete: if isAdmin();
+    }
+    
+    // Email queue - for processing emails via Cloud Functions or Extensions
+    match /email_queue/{emailId} {
+      // Only server-side functions can write
+      allow read, write: if false; // Server-side only
+    }
+    
+    // Public data that doesn't require authentication
+    match /public/{document=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    // Error logs and debugging - admin only read, authenticated users can write via API
+    match /error_logs/{document=**} {
+      allow read: if isAdmin();
+      // Write access handled by server-side API endpoint
+      allow write: if false; // Server-side only via API
+    }
+  }
+}

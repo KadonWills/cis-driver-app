@@ -1,0 +1,133 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check if user is the owner
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Helper function to get user role from Firestore
+    function getUserRole() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role;
+    }
+    
+    // Helper function to check if user is driver
+    function isDriver() {
+      return isAuthenticated() && getUserRole() == 'driver';
+    }
+    
+    // Helper function to check if user is admin
+    function isAdmin() {
+      return isAuthenticated() && getUserRole() == 'admin';
+    }
+    
+    // Helper function to check if user is approved and active
+    function isApprovedAndActive() {
+      let userData = firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data;
+      return userData.isApproved == true && userData.isActive == true;
+    }
+    
+    // Driver Documents
+    // Path: drivers/{userId}/documents/{fileName}
+    match /drivers/{userId}/documents/{fileName} {
+      // Allow read if user is reading their own documents or is admin
+      allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      
+      // Allow create/update if user is uploading to their own folder
+      // Only approved and active drivers can upload documents
+      allow create, update: if isAuthenticated() && 
+        isOwner(userId) && 
+        isDriver() && 
+        isApprovedAndActive() &&
+        // File size limit: 10MB
+        request.resource.size < 10 * 1024 * 1024 &&
+        // Only allow specific file types
+        (request.resource.contentType.matches('application/pdf') ||
+         request.resource.contentType.matches('image/.*'));
+      
+      // Allow delete if user owns the file or is admin
+      allow delete: if isAuthenticated() && (isOwner(userId) || isAdmin());
+    }
+    
+    // Delivery Photos
+    // Path: deliveries/{deliveryId}/photos/{fileName}
+    match /deliveries/{deliveryId}/photos/{fileName} {
+      // Allow read if user is admin or assigned driver
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        // Check if user is the assigned driver for this delivery
+        firestore.get(/databases/(default)/documents/deliveries/$(deliveryId)).data.driverId == request.auth.uid
+      );
+      
+      // Allow create/update if user is the assigned driver and approved/active
+      allow create, update: if isAuthenticated() && 
+        isDriver() && 
+        isApprovedAndActive() &&
+        // Check if user is the assigned driver
+        firestore.get(/databases/(default)/documents/deliveries/$(deliveryId)).data.driverId == request.auth.uid &&
+        // File size limit: 5MB for photos
+        request.resource.size < 5 * 1024 * 1024 &&
+        // Only allow image types
+        request.resource.contentType.matches('image/.*');
+      
+      // Allow delete if user is admin or assigned driver
+      allow delete: if isAuthenticated() && (
+        isAdmin() ||
+        firestore.get(/databases/(default)/documents/deliveries/$(deliveryId)).data.driverId == request.auth.uid
+      );
+    }
+    
+    // Delivery Signatures
+    // Path: signatures/{deliveryId}/{fileName}
+    match /signatures/{deliveryId}/{fileName} {
+      // Allow read if user is admin or assigned driver
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        firestore.get(/databases/(default)/documents/deliveries/$(deliveryId)).data.driverId == request.auth.uid
+      );
+      
+      // Allow create/update if user is the assigned driver and approved/active
+      allow create, update: if isAuthenticated() && 
+        isDriver() && 
+        isApprovedAndActive() &&
+        firestore.get(/databases/(default)/documents/deliveries/$(deliveryId)).data.driverId == request.auth.uid &&
+        // File size limit: 1MB for signatures
+        request.resource.size < 1 * 1024 * 1024 &&
+        // Only allow PNG images for signatures
+        request.resource.contentType == 'image/png';
+      
+      // Allow delete only by admin
+      allow delete: if isAuthenticated() && isAdmin();
+    }
+    
+    // Profile Images
+    // Path: profiles/{userId}/{fileName}
+    match /profiles/{userId}/{fileName} {
+      // Allow read for all authenticated users
+      allow read: if isAuthenticated();
+      
+      // Allow create/update if user is uploading their own profile image
+      allow create, update: if isAuthenticated() && 
+        isOwner(userId) &&
+        // File size limit: 2MB
+        request.resource.size < 2 * 1024 * 1024 &&
+        // Only allow image types
+        request.resource.contentType.matches('image/.*');
+      
+      // Allow delete if user owns the file or is admin
+      allow delete: if isAuthenticated() && (isOwner(userId) || isAdmin());
+    }
+    
+    // Deny all other access
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
