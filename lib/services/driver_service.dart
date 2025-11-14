@@ -14,17 +14,13 @@ class DriverService {
     required bool isOnline,
   }) async {
     try {
-      debugPrint(
-        '🚗 [DRIVER SERVICE] Updating availability: isOnline=$isOnline',
-      );
+      if (kDebugMode) {
+        debugPrint(
+          '🚗 [DRIVER SERVICE] Updating availability: isOnline=$isOnline',
+        );
+      }
 
-      // Update user_locations collection
-      await _firestore.collection('user_locations').doc(userId).set({
-        'isOnline': isOnline,
-        'lastUpdated': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-
-      // Update users/{userId}/driverDetails/isOnline
+      // Update users/{userId}/driverDetails/isOnline directly
       await _firestore
           .collection(AppConstants.usersCollection)
           .doc(userId)
@@ -33,7 +29,9 @@ class DriverService {
             'updatedAt': FieldValue.serverTimestamp(),
           });
 
-      debugPrint('🚗 [DRIVER SERVICE] Availability updated successfully');
+      if (kDebugMode) {
+        debugPrint('🚗 [DRIVER SERVICE] Availability updated successfully');
+      }
 
       // Log audit event
       await _auditLog.logUserUpdate(
@@ -42,7 +40,9 @@ class DriverService {
         changes: {'isOnline': isOnline},
       );
     } catch (e) {
-      debugPrint('❌ [DRIVER SERVICE] Error updating availability: $e');
+      if (kDebugMode) {
+        debugPrint('❌ [DRIVER SERVICE] Error updating availability: $e');
+      }
       rethrow;
     }
   }

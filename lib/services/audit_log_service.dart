@@ -19,28 +19,27 @@ class AuditLogService {
     try {
       final user = _auth.currentUser;
       if (user == null) {
-        debugPrint('📝 [AUDIT LOG] No user authenticated, skipping audit log');
+        if (kDebugMode) {
+          debugPrint('📝 [AUDIT LOG] No user authenticated, skipping audit log');
+        }
         return;
       }
 
       // Get user details
       final userId = user.uid;
       final userEmail = user.email ?? 'unknown@email.com';
-      
+
       // Get user name from Firestore
       String userName = 'Unknown User';
       try {
-        final userDoc = await _firestore
-            .collection('users')
-            .doc(userId)
-            .get();
-        
+        final userDoc = await _firestore.collection('users').doc(userId).get();
+
         if (userDoc.exists) {
           final userData = userDoc.data();
           final displayName = userData?['displayName'] as String?;
           final firstName = userData?['firstName'] as String? ?? '';
           final lastName = userData?['lastName'] as String? ?? '';
-          
+
           if (displayName != null && displayName.trim().isNotEmpty) {
             userName = displayName;
           } else if (firstName.isNotEmpty) {
@@ -48,7 +47,9 @@ class AuditLogService {
           }
         }
       } catch (e) {
-        debugPrint('📝 [AUDIT LOG] Error fetching user name: $e');
+        if (kDebugMode) {
+          debugPrint('📝 [AUDIT LOG] Error fetching user name: $e');
+        }
       }
 
       // Get IP address (for mobile, we'll use a placeholder or try to get it)
@@ -58,7 +59,9 @@ class AuditLogService {
         // For mobile apps, IP detection is limited
         // You could call an external service like ipify.org if needed
       } catch (e) {
-        debugPrint('📝 [AUDIT LOG] Could not determine IP address: $e');
+        if (kDebugMode) {
+          debugPrint('📝 [AUDIT LOG] Could not determine IP address: $e');
+        }
       }
 
       // Get user agent (device info)
@@ -70,7 +73,9 @@ class AuditLogService {
           userAgent = 'iOS Mobile App';
         }
       } catch (e) {
-        debugPrint('📝 [AUDIT LOG] Could not determine user agent: $e');
+        if (kDebugMode) {
+          debugPrint('📝 [AUDIT LOG] Could not determine user agent: $e');
+        }
       }
 
       // Create audit log entry
@@ -94,11 +99,15 @@ class AuditLogService {
 
       // Save to audit_logs collection
       await _firestore.collection('audit_logs').add(auditLog);
-      
-      debugPrint('📝 [AUDIT LOG] Logged: $action on $collection');
+
+      if (kDebugMode) {
+        debugPrint('📝 [AUDIT LOG] Logged: $action on $collection');
+      }
     } catch (e, stackTrace) {
-      debugPrint('❌ [AUDIT LOG] Error logging audit: $e');
-      debugPrint('   Stack trace: $stackTrace');
+      if (kDebugMode) {
+        debugPrint('❌ [AUDIT LOG] Error logging audit: $e');
+        debugPrint('   Stack trace: $stackTrace');
+      }
       // Don't throw - audit logging should not break the main operation
     }
   }
@@ -115,10 +124,7 @@ class AuditLogService {
       collection: 'deliveries',
       documentId: deliveryId,
       message: message,
-      metadata: {
-        'deliveryId': deliveryId,
-        'changes': changes ?? {},
-      },
+      metadata: {'deliveryId': deliveryId, 'changes': changes ?? {}},
     );
   }
 
@@ -152,13 +158,10 @@ class AuditLogService {
   }) async {
     await logUpdate(
       action: 'location_update',
-      collection: 'user_locations',
+      collection: 'users',
       documentId: userId,
       message: 'Updated user location',
-      metadata: {
-        'userId': userId,
-        'locationData': locationData ?? {},
-      },
+      metadata: {'userId': userId, 'locationData': locationData ?? {}},
     );
   }
 
@@ -173,11 +176,7 @@ class AuditLogService {
       collection: 'users',
       documentId: userId,
       message: message,
-      metadata: {
-        'userId': userId,
-        'changes': changes ?? {},
-      },
+      metadata: {'userId': userId, 'changes': changes ?? {}},
     );
   }
 }
-

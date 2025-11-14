@@ -100,65 +100,72 @@ class LocationService {
   }
 
   /// Update user location to Firestore every 15 seconds
-  /// Updates both user_locations collection and users/{userId}/driverDetails/currentLocation
+  /// Updates users/{userId}/driverDetails/currentLocation directly
   Timer? _locationUpdateTimer;
 
   Future<void> startLocationUpdates(String userId) async {
-    debugPrint('📍 [LOCATION] Starting location updates for user: $userId');
-    
+    if (kDebugMode) {
+      debugPrint('📍 [LOCATION] Starting location updates for user: $userId');
+    }
+
     // Stop any existing updates
     stopLocationUpdates();
 
     // Check permissions
     final hasPermission = await checkLocationPermission();
     if (!hasPermission) {
-      debugPrint('📍 [LOCATION] Location permission denied');
+      if (kDebugMode) {
+        debugPrint('📍 [LOCATION] Location permission denied');
+      }
       return;
     }
     final firestore = FirebaseFirestore.instance;
-    
+
     // Update immediately
     await _updateLocationToFirestore(userId, firestore);
-    
+
     // Then update every 15 seconds
-    _locationUpdateTimer = Timer.periodic(const Duration(seconds: 15), (timer) async {
+    _locationUpdateTimer = Timer.periodic(const Duration(seconds: 15), (
+      timer,
+    ) async {
       await _updateLocationToFirestore(userId, firestore);
     });
   }
 
-  Future<void> _updateLocationToFirestore(String userId, FirebaseFirestore firestore) async {
+  Future<void> _updateLocationToFirestore(
+    String userId,
+    FirebaseFirestore firestore,
+  ) async {
     try {
       final position = await getCurrentPosition();
       final location = await getLocationFromPosition(position);
-      
-      // Update user_locations collection
-      await firestore
-          .collection('user_locations')
-          .doc(userId)
-          .set({
-        'location': location.toMap(),
-        'lastUpdated': FieldValue.serverTimestamp(),
-        'isOnline': true,
-      }, SetOptions(merge: true));
 
-      // Update users/{userId}/driverDetails/currentLocation
+      // Update users/{userId}/driverDetails/currentLocation directly
       await firestore
           .collection(AppConstants.usersCollection)
           .doc(userId)
           .update({
-        'driverDetails.currentLocation': location.toMap(),
-        'driverDetails.lastLocationUpdate': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+            'driverDetails.currentLocation': location.toMap(),
+            'driverDetails.lastLocationUpdate': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
 
-      debugPrint('📍 [LOCATION] Updated location: ${location.latitude}, ${location.longitude}');
+      if (kDebugMode) {
+        debugPrint(
+          '📍 [LOCATION] Updated location: ${location.latitude}, ${location.longitude}',
+        );
+      }
     } catch (e) {
-      debugPrint('📍 [LOCATION] Error updating location: $e');
+      if (kDebugMode) {
+        debugPrint('📍 [LOCATION] Error updating location: $e');
+      }
     }
   }
 
   void stopLocationUpdates() {
-    debugPrint('📍 [LOCATION] Stopping location updates');
+    if (kDebugMode) {
+      debugPrint('📍 [LOCATION] Stopping location updates');
+    }
     _locationUpdateTimer?.cancel();
     _locationUpdateTimer = null;
   }

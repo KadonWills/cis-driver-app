@@ -9,129 +9,152 @@ class AdminLocationService {
 
   /// Stream of driver locations (for pulsating markers)
   Stream<List<UserLocationModel>> getDriverLocations() {
-    debugPrint('📍 [ADMIN LOCATION] Starting stream for driver locations');
-    
+    if (kDebugMode) {
+      debugPrint('📍 [ADMIN LOCATION] Starting stream for driver locations');
+    }
+
     return _firestore
-        .collection('user_locations')
-        .where('isOnline', isEqualTo: true)
+        .collection('users')
+        .where('role', isEqualTo: 'driver')
+        .where('driverDetails.isOnline', isEqualTo: true)
         .snapshots()
         .asyncMap((snapshot) async {
-      debugPrint('📍 [ADMIN LOCATION] Received ${snapshot.docs.length} location updates');
-      
-      final locations = <UserLocationModel>[];
-      
-      for (var doc in snapshot.docs) {
-        try {
-          // Fetch user data to get role and name
-          final userDoc = await _firestore
-              .collection('users')
-              .doc(doc.id)
-              .get();
-          
-          final userData = userDoc.data();
-          final role = userData?['role'] as String?;
-          
-          // Only include drivers
-          if (role == 'driver') {
-            final userLocation = UserLocationModel.fromFirestore(doc, userData);
-            if (userLocation.location != null) {
-              locations.add(userLocation);
+          if (kDebugMode) {
+            debugPrint(
+              '📍 [ADMIN LOCATION] Received ${snapshot.docs.length} driver users',
+            );
+          }
+
+          final locations = <UserLocationModel>[];
+
+          for (var doc in snapshot.docs) {
+            try {
+              final userData = doc.data();
+
+              // Create UserLocationModel from user document
+              final userLocation = UserLocationModel.fromUserDocument(
+                doc,
+                userData,
+              );
+              if (userLocation.location != null) {
+                locations.add(userLocation);
+              }
+            } catch (e) {
+              if (kDebugMode) {
+                debugPrint(
+                  '📍 [ADMIN LOCATION] Error processing location for ${doc.id}: $e',
+                );
+              }
             }
           }
-        } catch (e) {
-          debugPrint('📍 [ADMIN LOCATION] Error processing location for ${doc.id}: $e');
-        }
-      }
-      
-      debugPrint('📍 [ADMIN LOCATION] Processed ${locations.length} driver locations');
-      return locations;
-    });
+
+          if (kDebugMode) {
+            debugPrint(
+              '📍 [ADMIN LOCATION] Processed ${locations.length} driver locations',
+            );
+          }
+          return locations;
+        });
   }
 
   /// Stream of pharmacy/healthcare unit locations (static markers)
   Stream<List<PharmacyLocationModel>> getPharmacyLocations() {
-    debugPrint('📍 [ADMIN LOCATION] Starting stream for pharmacy locations');
-    
+    if (kDebugMode) {
+      debugPrint('📍 [ADMIN LOCATION] Starting stream for pharmacy locations');
+    }
+
     return _firestore
         .collection('users')
         .where('role', isEqualTo: 'pharmacy')
         .where('isActive', isEqualTo: true)
         .snapshots()
         .asyncMap((snapshot) async {
-      debugPrint('📍 [ADMIN LOCATION] Received ${snapshot.docs.length} pharmacy users');
-      
-      final locations = <PharmacyLocationModel>[];
-      
-      for (var doc in snapshot.docs) {
-        try {
-          final data = doc.data();
-          
-          // Try to get location from pharmacyDetails.location
-          Map<String, dynamic>? locationData;
-          String? pharmacyName;
-          
-          // Check pharmacyDetails.location
-          final pharmacyDetails = data['pharmacyDetails'] as Map<String, dynamic>?;
-          if (pharmacyDetails != null) {
-            locationData = pharmacyDetails['location'] as Map<String, dynamic>?;
-            pharmacyName = pharmacyDetails['pharmacyName'] as String?;
+          if (kDebugMode) {
+            debugPrint(
+              '📍 [ADMIN LOCATION] Received ${snapshot.docs.length} pharmacy users',
+            );
           }
-          
-          // Fallback: check if there's a location in user_locations
-          if (locationData == null) {
+
+          final locations = <PharmacyLocationModel>[];
+
+          for (var doc in snapshot.docs) {
             try {
-              final locationDoc = await _firestore
-                  .collection('user_locations')
-                  .doc(doc.id)
-                  .get();
-              
-              if (locationDoc.exists) {
-                final locData = locationDoc.data();
-                locationData = locData?['location'] as Map<String, dynamic>?;
+              final data = doc.data();
+
+              // Try to get location from pharmacyDetails.location
+              Map<String, dynamic>? locationData;
+              String? pharmacyName;
+
+              // Check pharmacyDetails.location
+              final pharmacyDetails =
+                  data['pharmacyDetails'] as Map<String, dynamic>?;
+              if (pharmacyDetails != null) {
+                locationData =
+                    pharmacyDetails['location'] as Map<String, dynamic>?;
+                pharmacyName = pharmacyDetails['pharmacyName'] as String?;
+              }
+
+              // Fallback: check driverDetails.currentLocation (for drivers who may have location)
+              if (locationData == null) {
+                final driverDetails =
+                    data['driverDetails'] as Map<String, dynamic>?;
+                if (driverDetails != null) {
+                  locationData =
+                      driverDetails['currentLocation'] as Map<String, dynamic>?;
+                }
+              }
+
+              // Fallback: check coordinates field (for older data structure)
+              if (locationData == null) {
+                final coordinates =
+                    data['coordinates'] as Map<String, dynamic>?;
+                if (coordinates != null) {
+                  final lat = coordinates['lat'] as num?;
+                  final lng = coordinates['lng'] as num?;
+                  if (lat != null && lng != null) {
+                    locationData = {
+                      'latitude': lat.toDouble(),
+                      'longitude': lng.toDouble(),
+                      'address': data['address'] as String? ?? '',
+                      'city': data['city'] as String? ?? '',
+                      'postcode': data['postcode'] as String? ?? '',
+                      'country': 'UK',
+                    };
+                  }
+                }
+              }
+
+              if (locationData != null) {
+                final firstName = data['firstName'] as String? ?? '';
+                final lastName = data['lastName'] as String? ?? '';
+                final name = pharmacyName ?? '$firstName $lastName'.trim();
+
+                locations.add(
+                  PharmacyLocationModel(
+                    userId: doc.id,
+                    name: name.isEmpty
+                        ? data['email'] as String? ?? 'Unknown Pharmacy'
+                        : name,
+                    location: LocationModel.fromMap(locationData),
+                  ),
+                );
               }
             } catch (e) {
-              debugPrint('📍 [ADMIN LOCATION] Error fetching location for pharmacy ${doc.id}: $e');
-            }
-          }
-          
-          // Fallback: check coordinates field (for older data structure)
-          if (locationData == null) {
-            final coordinates = data['coordinates'] as Map<String, dynamic>?;
-            if (coordinates != null) {
-              final lat = coordinates['lat'] as num?;
-              final lng = coordinates['lng'] as num?;
-              if (lat != null && lng != null) {
-                locationData = {
-                  'latitude': lat.toDouble(),
-                  'longitude': lng.toDouble(),
-                  'address': data['address'] as String? ?? '',
-                  'city': data['city'] as String? ?? '',
-                  'postcode': data['postcode'] as String? ?? '',
-                  'country': 'UK',
-                };
+              if (kDebugMode) {
+                debugPrint(
+                  '📍 [ADMIN LOCATION] Error processing pharmacy ${doc.id}: $e',
+                );
               }
             }
           }
-          
-          if (locationData != null) {
-            final firstName = data['firstName'] as String? ?? '';
-            final lastName = data['lastName'] as String? ?? '';
-            final name = pharmacyName ?? '$firstName $lastName'.trim();
-            
-            locations.add(PharmacyLocationModel(
-              userId: doc.id,
-              name: name.isEmpty ? data['email'] as String? ?? 'Unknown Pharmacy' : name,
-              location: LocationModel.fromMap(locationData),
-            ));
+
+          if (kDebugMode) {
+            debugPrint(
+              '📍 [ADMIN LOCATION] Processed ${locations.length} pharmacy locations',
+            );
           }
-        } catch (e) {
-          debugPrint('📍 [ADMIN LOCATION] Error processing pharmacy ${doc.id}: $e');
-        }
-      }
-      
-      debugPrint('📍 [ADMIN LOCATION] Processed ${locations.length} pharmacy locations');
-      return locations;
-    });
+          return locations;
+        });
   }
 }
 

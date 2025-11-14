@@ -18,9 +18,13 @@ class LocalStorageService {
       
       await prefs.setString(_userJsonKey, userJson);
       
-      debugPrint('💾 [LOCAL STORAGE] User data saved locally');
+      if (kDebugMode) {
+        debugPrint('💾 [LOCAL STORAGE] User data saved locally');
+      }
     } catch (e) {
-      debugPrint('❌ [LOCAL STORAGE] Error saving user data: $e');
+      if (kDebugMode) {
+        debugPrint('❌ [LOCAL STORAGE] Error saving user data: $e');
+      }
     }
   }
 
@@ -31,7 +35,9 @@ class LocalStorageService {
       final userJson = prefs.getString(_userJsonKey);
       
       if (userJson == null) {
-        debugPrint('💾 [LOCAL STORAGE] No cached user data found');
+        if (kDebugMode) {
+          debugPrint('💾 [LOCAL STORAGE] No cached user data found');
+        }
         return null;
       }
       
@@ -40,10 +46,14 @@ class LocalStorageService {
       // Convert JSON map back to UserModel
       final user = _userModelFromJson(userMap);
       
-      debugPrint('💾 [LOCAL STORAGE] User data loaded from cache');
+      if (kDebugMode) {
+        debugPrint('💾 [LOCAL STORAGE] User data loaded from cache');
+      }
       return user;
     } catch (e) {
-      debugPrint('❌ [LOCAL STORAGE] Error loading user data: $e');
+      if (kDebugMode) {
+        debugPrint('❌ [LOCAL STORAGE] Error loading user data: $e');
+      }
       return null;
     }
   }
@@ -54,9 +64,13 @@ class LocalStorageService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_userJsonKey);
       
-      debugPrint('💾 [LOCAL STORAGE] User data cleared');
+      if (kDebugMode) {
+        debugPrint('💾 [LOCAL STORAGE] User data cleared');
+      }
     } catch (e) {
-      debugPrint('❌ [LOCAL STORAGE] Error clearing user data: $e');
+      if (kDebugMode) {
+        debugPrint('❌ [LOCAL STORAGE] Error clearing user data: $e');
+      }
     }
   }
 
@@ -66,9 +80,13 @@ class LocalStorageService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.clear();
       
-      debugPrint('💾 [LOCAL STORAGE] All local data cleared');
+      if (kDebugMode) {
+        debugPrint('💾 [LOCAL STORAGE] All local data cleared');
+      }
     } catch (e) {
-      debugPrint('❌ [LOCAL STORAGE] Error clearing all data: $e');
+      if (kDebugMode) {
+        debugPrint('❌ [LOCAL STORAGE] Error clearing all data: $e');
+      }
     }
   }
 
